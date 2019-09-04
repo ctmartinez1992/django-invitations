@@ -24,31 +24,27 @@ from .base_invitation import AbstractBaseInvitation
 
 @python_2_unicode_compatible
 class Invitation(AbstractBaseInvitation):
-    email = models.EmailField(
-        unique=True,
-        verbose_name=_("e-mail address"),
-        max_length=app_settings.EMAIL_MAX_LENGTH,
-    )
+    email = models.EmailField(unique=True, verbose_name=_("e-mail address"), max_length=app_settings.EMAIL_MAX_LENGTH)
     created = models.DateTimeField(verbose_name=_("created"), default=timezone.now)
 
     @classmethod
     def create(cls, email, inviter=None, **kwargs):
         key = get_random_string(64).lower()
-        instance = cls._default_manager.create(
-            email=email, key=key, inviter=inviter, **kwargs
-        )
+        instance = cls._default_manager.create(email=email, key=key, inviter=inviter, **kwargs)
         return instance
 
     def key_expired(self):
-        expiration_date = self.sent + datetime.timedelta(
-            days=app_settings.INVITATION_EXPIRY
-        )
+        expiration_date = self.sent + datetime.timedelta(days=app_settings.INVITATION_EXPIRY)
         return expiration_date <= timezone.now()
 
     def send_invitation(self, request, **kwargs):
-        current_site = kwargs.pop("site", Site.objects.get_current())
         invite_url = reverse("invitations:accept-invite", args=[self.key])
         invite_url = request.build_absolute_uri(invite_url)
+        self.send_invitation_with_url(invite_url, kwargs)
+
+    def send_invitation_with_invite(self, invite_url, **kwargs):
+        current_site = kwargs.pop("site", Site.objects.get_current())
+
         ctx = kwargs
         ctx.update(
             {
@@ -67,10 +63,7 @@ class Invitation(AbstractBaseInvitation):
         self.save()
 
         signals.invite_url_sent.send(
-            sender=self.__class__,
-            instance=self,
-            invite_url_sent=invite_url,
-            inviter=self.inviter,
+            sender=self.__class__, instance=self, invite_url_sent=invite_url, inviter=self.inviter
         )
 
     def __str__(self):
@@ -79,9 +72,7 @@ class Invitation(AbstractBaseInvitation):
 
 class InvitationsAdapter(DefaultAccountAdapter):
     def is_open_for_signup(self, request):
-        if hasattr(request, "session") and request.session.get(
-            "account_verified_email"
-        ):
+        if hasattr(request, "session") and request.session.get("account_verified_email"):
             return True
         elif app_settings.INVITATION_ONLY is True:
             # Site is ONLY open for invites
